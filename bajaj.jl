@@ -212,6 +212,11 @@ function curveNormalConstraint(curve, n0, n1, ::Val{3})
     end
 end
 
+function lineConstraint(p, d, degree)
+    map(1:degree) do i          # assumes that one other point (p) is already constrained
+        pointConstraint(p + d * i, Val(degree))
+    end
+end
 
 function fitCubic(curve, n0, n1)
     rows = 13
@@ -228,10 +233,24 @@ function fitCubic(curve, n0, n1)
     # A[10,:], A[11,:] = normalConstraint(evalRational(curve, 1), n1, Val(3))
     A[8,:], A[9,:], A[10,:] = normalConstraintExplicit(evalRational(curve, 0), Val(3))
     A[11,:], A[12,:], A[13,:] = normalConstraintExplicit(evalRational(curve, 1), Val(3))
+    t0 = evalRationalDerivative(curve, 0)
+    t05 = evalRationalDerivative(curve, 0.5)
+    t1 = evalRationalDerivative(curve, 1)
+    b0 = normalize(cross(t0, n0))
+    b05 = normalize(cross(t05, normalize(n0 + n1)))
+    b1 = normalize(cross(t1, n1))
+    # A[14,:], A[15,:], A[16,:] = lineConstraint(evalRational(curve, 0.5), b05, 3)
+    # A[14,:], A[15,:], A[16,:] = lineConstraint(evalRational(curve, 0), b0, 3)
+    # A[17,:], A[18,:], A[19,:] = lineConstraint(evalRational(curve, 1), b1, 3)
+    # A[14,:], A[15,:], A[16,:] = lineConstraint(evalRational(curve, 0), t0, 3)
+    # A[17,:], A[18,:], A[19,:] = lineConstraint(evalRational(curve, 1), t1, 3)
     b = zeros(rows)
     b[8:10] = n0
     b[11:13] = n1
     x = qr(A, Val(true)) \ b
+    # F = svd(A)
+    # i = findfirst(s -> abs(s) < 1e-5, F.S) - 1
+    # x = F.V[:,i]
     println("S: $(svd(A).S)")
     println("x: $x\nError: $(maximum(map(abs,A*x-b)))")
     x
@@ -240,14 +259,16 @@ end
 evalCubic(cf, p) = sum(pointConstraint(p, Val(3)) .* cf)
 
 function test(degree)
-    curve = RationalCurve([[1., 1, 1], [1, 2, 1], [2, 2, 1]], [1, sqrt(2)/2, 1])
-    n0 = [0.4, 0, 1]
+    curve = RationalCurve([[1., 1, 20], [1, 2, 20], [2, 2, 20]], [1, sqrt(2)/2, 1])
+    n0 = [0.1, 0, 1]
     n1 = [0, 0.1, 1]
+    # n0 = [-1, 0, 0.1]
+    # n1 = [0, 1, -0.1]
     res = 30
     fitter = degree == 2 ? fitQuadratic : fitCubic
     evaluator = degree == 2 ? evalQuadratic : evalCubic
     f = fitter(curve, normalize(n0), normalize(n1))
-    dc = Main.DualContouring.isosurface(0, ([0,0,0], [3,3,3]), (res, res, res)) do p
+    dc = Main.DualContouring.isosurface(0, ([0,0,19], [3,3,22]), (res, res, res)) do p
         evaluator(f, p)
     end
     Main.DualContouring.writeOBJ(dc..., "/tmp/surface.obj")
