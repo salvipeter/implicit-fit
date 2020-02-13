@@ -138,7 +138,7 @@ function prettyprint(x, ::Val{2})
     names = ["x**2", "y**2", "z**2", "y*z", "x*z", "x*y", "x", "y", "z", "1"]
     for i in 1:length(x)
         xi = x[i]
-        if xi > 1e-5
+        if abs(xi) > 1e-5
             @printf "%.02f * %s + " xi names[i]
         end
     end
@@ -146,7 +146,7 @@ function prettyprint(x, ::Val{2})
 end
 
 function fitQuadratic(curve, n0, n1)
-    rows = 12
+    rows = 9
     A1 = zeros(rows, 10)
     cc = curveConstraint(curve, Val(2))
     for i in 1:length(cc)
@@ -156,18 +156,18 @@ function fitQuadratic(curve, n0, n1)
     # for i in 1:length(cnc)
     #     A1[length(cc)+i,:] = cnc[i]
     # end
-    # A1[6,:], A1[7,:] = normalConstraint(evalRational(curve, 0), n0, Val(2))
-    # A1[8,:], A1[9,:] = normalConstraint(evalRational(curve, 1), n1, Val(2))
-    A1[6,:], A1[7,:], A1[8,:] = normalConstraintExplicit(evalRational(curve, 0), Val(2))
-    A1[9,:], A1[10,:], A1[11,:] = normalConstraintExplicit(evalRational(curve, 1), Val(2))
+    A1[6,:], A1[7,:] = normalConstraint(evalRational(curve, 0), n0, Val(2))
+    A1[8,:], A1[9,:] = normalConstraint(evalRational(curve, 1), n1, Val(2))
+    # A1[6,:], A1[7,:], A1[8,:] = normalConstraintExplicit(evalRational(curve, 0), Val(2))
+    # A1[9,:], A1[10,:], A1[11,:] = normalConstraintExplicit(evalRational(curve, 1), Val(2))
     # A1[10,:] = ones(10)
     b1 = zeros(rows)
-    b1[6:8] = n0
-    b1[9:11] = n1
+    # b1[6:8] = n0
+    # b1[9:11] = n1
     # b1[10] = 1
 
     n = rows
-    m = 30                       # minimization constraints
+    m = 4                       # minimization constraints
     A2 = zeros(m, 10)
     b2 = zeros(m)
     points = []
@@ -193,18 +193,25 @@ function fitQuadratic(curve, n0, n1)
     end
 
     # Least-square minimization of A2 x = b2, while constraining A1 x = b1
-    A = [(A2' * A2) A1'; A1 zeros(n,n)]
+    A = [(A2' * A2)     A1'
+             A1      zeros(n,n)]
     b = vcat(A2' * b2, b1)
 
     # No minimization
     # A = A1
     # b = b1
 
-    x = qr(A, Val(true)) \ b
+    F = svd(A)
+    #    i = findfirst(s -> abs(s) < 1e-5, F.S) - 1
+    # println("S: $(F.S)")
+    # display(F.V)
+    x = F.V[:,end]
+    # x = qr(A, Val(true)) \ b
 
     print("x: ")
     prettyprint(x[1:10], Val(2))
-    println("Error: $(maximum(map(abs,A*x-b)))")
+#    println("S: $(svd(A1).S)")
+    println("Error: $(maximum(map(abs,A1*x[1:10]-b1)))")
     x[1:10]
 end
 
@@ -272,7 +279,7 @@ function prettyprint(x, ::Val{3})
              "x*y*z", "x**2", "y**2", "z**2", "y*z", "x*z", "x*y", "x", "y", "z", "1"]
     for i in 1:length(x)
         xi = x[i]
-        if xi > 1e-5
+        if abs(xi) > 1e-5
             @printf "%.02f * %s + " xi names[i]
         end
     end
@@ -342,8 +349,7 @@ function fitCubic(curve, n0, n1)
     x = qr(A, Val(true)) \ b
 
     # F = svd(A)
-    # i = findfirst(s -> abs(s) < 1e-5, F.S) - 1
-    # x = F.V[:,i]
+    # x = F.V[:,end]
 
     print("x: ")
     prettyprint(x[1:20], Val(3))
@@ -358,8 +364,8 @@ function test(degree)
     curve = RationalCurve([origin, origin + [0, 1, 0], origin + [1, 1, 0]], [1, sqrt(2)/2, 1])
     # n0 = [0.1, 0, 1]
     # n1 = [0, 0.1, 1]
-    n0 = [-1, 0, 0.4]
-    n1 = [0, 1, -0.4]
+    n0 = [-1, 0, -0.4]
+    n1 = [0, 1, 0.4]
     res = 30
     fitter = degree == 2 ? fitQuadratic : fitCubic
     evaluator = degree == 2 ? evalQuadratic : evalCubic
