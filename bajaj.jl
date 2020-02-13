@@ -3,6 +3,7 @@
 module Bajaj
 
 using LinearAlgebra
+using Printf
 
 
 # Rational Bezier
@@ -218,57 +219,105 @@ function lineConstraint(p, d, degree)
     end
 end
 
-function fitCubic(curve, n0, n1)
-    rows = 13
-    A = zeros(rows, 20)
-    cc = curveConstraint(curve, Val(3))
-    for i in 1:length(cc)
-        A[i,:] = cc[i]
+function prettyprint(x)
+    names = ["x**3", "y**3", "z**3", "x**2*y", "x**2*z", "y**2*x", "y**2*z", "z**2*x", "z**2*y",
+             "x*y*z", "x**2", "y**2", "z**2", "y*z", "x*z", "x*y", "x", "y", "z", "1"]
+    for i in 1:length(x)
+        xi = x[i]
+        if xi > 1e-5
+            @printf "%.02f * %s + " xi names[i]
+        end
     end
+    println("0")
+end
+
+function fitCubic(curve, n0, n1)
+    rows = curveConstraint(curve, Val(3))
     # cnc = curveNormalConstraint(curve, n0, n1, Val(3))
     # for i in 1:length(cnc)
     #     A[length(cc)+i,:] = cnc[i]
     # end
-    # A[8,:], A[9,:] = normalConstraint(evalRational(curve, 0), n0, Val(3))
-    # A[10,:], A[11,:] = normalConstraint(evalRational(curve, 1), n1, Val(3))
-    A[8,:], A[9,:], A[10,:] = normalConstraintExplicit(evalRational(curve, 0), Val(3))
-    A[11,:], A[12,:], A[13,:] = normalConstraintExplicit(evalRational(curve, 1), Val(3))
-    t0 = evalRationalDerivative(curve, 0)
-    t05 = evalRationalDerivative(curve, 0.5)
-    t1 = evalRationalDerivative(curve, 1)
-    b0 = normalize(cross(t0, n0))
-    b05 = normalize(cross(t05, normalize(n0 + n1)))
-    b1 = normalize(cross(t1, n1))
-    # A[14,:], A[15,:], A[16,:] = lineConstraint(evalRational(curve, 0.5), b05, 3)
-    # A[14,:], A[15,:], A[16,:] = lineConstraint(evalRational(curve, 0), b0, 3)
-    # A[17,:], A[18,:], A[19,:] = lineConstraint(evalRational(curve, 1), b1, 3)
-    # A[14,:], A[15,:], A[16,:] = lineConstraint(evalRational(curve, 0), t0, 3)
-    # A[17,:], A[18,:], A[19,:] = lineConstraint(evalRational(curve, 1), t1, 3)
-    b = zeros(rows)
-    b[8:10] = n0
-    b[11:13] = n1
+    # append!(rows, normalConstraint(evalRational(curve, 0), n0, Val(3)))
+    # append!(rows, normalConstraint(evalRational(curve, 1), n1, Val(3)))
+    append!(rows, normalConstraintExplicit(evalRational(curve, 0), Val(3)))
+    append!(rows, normalConstraintExplicit(evalRational(curve, 1), Val(3)))
+    # t0 = evalRationalDerivative(curve, 0)
+    # t05 = evalRationalDerivative(curve, 0.5)
+    # t1 = evalRationalDerivative(curve, 1)
+    # b0 = normalize(cross(t0, n0))
+    # b05 = normalize(cross(t05, normalize(n0 + n1)))
+    # b1 = normalize(cross(t1, n1))
+    # append!(rows, lineConstraint(evalRational(curve, 0.5), b05, 3))
+    # append!(rows, lineConstraint(evalRational(curve, 0), b0, 3))
+    # append!(rows, lineConstraint(evalRational(curve, 1), b1, 3))
+    # append!(rows, lineConstraint(evalRational(curve, 0), t0, 3))
+    # append!(rows, lineConstraint(evalRational(curve, 1), t1, 3))
+    A1 = mapreduce(transpose, vcat, rows)
+    n = size(A1, 1)
+    b1 = zeros(n)
+    b1[8:10] = n0
+    b1[11:13] = n1
+
+    m = 30                       # minimization constraints
+    A2 = zeros(m, 20)
+    b2 = zeros(m)
+    points = []
+    for i in 1:m÷3
+        s = (i-1)/(m÷3-1)
+        ps = evalRational(curve, s)
+        ts = evalRationalDerivative(curve, s)
+        ns = n0 * (1 - s) + n1 * s
+        bs = normalize(cross(ts, ns))
+        lc = lineConstraint(ps, bs, 3)
+        append!(points, [ps + bs, ps + 2bs, ps + 3bs])
+        for j in 1:3
+            A2[3i-3+j,:] = lc[j]
+        end
+    end
+    open("/tmp/points.obj", "w") do f
+        for p in points
+            println(f, "v $(p[1]) $(p[2]) $(p[3])")
+        end
+        for i in 1:length(points)
+            println(f, "p $i")
+        end
+    end
+
+    # Least-square minimization of A2 x = b2, while constraining A1 x = b1
+    A = [(A2' * A2) A1'; A1 zeros(n,n)]
+    b = vcat(A2' * b2, b1)
+
+    # No minimization
+    # A = A1
+    # b = b1
+
     x = qr(A, Val(true)) \ b
+
     # F = svd(A)
     # i = findfirst(s -> abs(s) < 1e-5, F.S) - 1
     # x = F.V[:,i]
-    println("S: $(svd(A).S)")
-    println("x: $x\nError: $(maximum(map(abs,A*x-b)))")
-    x
+
+    # println("S: $(svd(A).S)")
+    print("x: ")
+    prettyprint(x[1:20])
+    println("Error: $(maximum(map(abs,A*x-b)))")
+    x[1:20]
 end
 
 evalCubic(cf, p) = sum(pointConstraint(p, Val(3)) .* cf)
 
 function test(degree)
-    curve = RationalCurve([[1., 1, 20], [1, 2, 20], [2, 2, 20]], [1, sqrt(2)/2, 1])
-    n0 = [0.1, 0, 1]
-    n1 = [0, 0.1, 1]
-    # n0 = [-1, 0, 0.1]
-    # n1 = [0, 1, -0.1]
+    origin = [5,-7,3]
+    curve = RationalCurve([origin, origin + [0, 1, 0], origin + [1, 1, 0]], [1, sqrt(2)/2, 1])
+    # n0 = [0.1, 0, 1]
+    # n1 = [0, 0.1, 1]
+    n0 = [-1, 0, 0.1]
+    n1 = [0, 1, -0.1]
     res = 30
     fitter = degree == 2 ? fitQuadratic : fitCubic
     evaluator = degree == 2 ? evalQuadratic : evalCubic
     f = fitter(curve, normalize(n0), normalize(n1))
-    dc = Main.DualContouring.isosurface(0, ([0,0,19], [3,3,22]), (res, res, res)) do p
+    dc = Main.DualContouring.isosurface(0, (origin-[1,1,1], origin+[2,2,2]), (res, res, res)) do p
         evaluator(f, p)
     end
     Main.DualContouring.writeOBJ(dc..., "/tmp/surface.obj")
