@@ -146,27 +146,19 @@ function prettyprint(x, ::Val{2})
 end
 
 function fitQuadratic(curve, n0, n1)
-    rows = 9
-    A1 = zeros(rows, 10)
-    cc = curveConstraint(curve, Val(2))
-    for i in 1:length(cc)
-        A1[i,:] = cc[i]
-    end
-    # cnc = curveNormalConstraint(curve, n0, n1, Val(2))
-    # for i in 1:length(cnc)
-    #     A1[length(cc)+i,:] = cnc[i]
-    # end
-    A1[6,:], A1[7,:] = normalConstraint(evalRational(curve, 0), n0, Val(2))
-    A1[8,:], A1[9,:] = normalConstraint(evalRational(curve, 1), n1, Val(2))
-    # A1[6,:], A1[7,:], A1[8,:] = normalConstraintExplicit(evalRational(curve, 0), Val(2))
-    # A1[9,:], A1[10,:], A1[11,:] = normalConstraintExplicit(evalRational(curve, 1), Val(2))
-    # A1[10,:] = ones(10)
-    b1 = zeros(rows)
+    rows = curveConstraint(curve, Val(2))
+    # append!(rows, curveNormalConstraint(curve, n0, n1, Val(2)))
+    append!(rows, normalConstraint(evalRational(curve, 0), n0, Val(2)))
+    append!(rows, normalConstraint(evalRational(curve, 1), n1, Val(2)))
+    # append!(rows, normalConstraintExplicit(evalRational(curve, 0), Val(2)))
+    # append!(rows, normalConstraintExplicit(evalRational(curve, 1), Val(2)))
+
+    A1 = mapreduce(transpose, vcat, rows)
+    n = size(A1, 1)
+    b1 = zeros(n)
     # b1[6:8] = n0
     # b1[9:11] = n1
-    # b1[10] = 1
 
-    n = rows
     m = 4                       # minimization constraints
     A2 = zeros(m, 10)
     b2 = zeros(m)
@@ -202,7 +194,6 @@ function fitQuadratic(curve, n0, n1)
     # b = b1
 
     F = svd(A)
-    #    i = findfirst(s -> abs(s) < 1e-5, F.S) - 1
     # println("S: $(F.S)")
     # display(F.V)
     x = F.V[:,end]
@@ -210,7 +201,6 @@ function fitQuadratic(curve, n0, n1)
 
     print("x: ")
     prettyprint(x[1:10], Val(2))
-#    println("S: $(svd(A1).S)")
     println("Error: $(maximum(map(abs,A1*x[1:10]-b1)))")
     x[1:10]
 end
@@ -288,10 +278,7 @@ end
 
 function fitCubic(curve, n0, n1)
     rows = curveConstraint(curve, Val(3))
-    # cnc = curveNormalConstraint(curve, n0, n1, Val(3))
-    # for i in 1:length(cnc)
-    #     A[length(cc)+i,:] = cnc[i]
-    # end
+    # append!(rows, curveNormalConstraint(curve, n0, n1, Val(3)))
     # append!(rows, normalConstraint(evalRational(curve, 0), n0, Val(3)))
     # append!(rows, normalConstraint(evalRational(curve, 1), n1, Val(3)))
     append!(rows, normalConstraintExplicit(evalRational(curve, 0), Val(3)))
