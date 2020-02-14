@@ -134,6 +134,11 @@ function curveNormalConstraint(curve, n0, n1, ::Val{2})
     end
 end
 
+function lineConstraint(p, d, ::Val{2})
+    [pointConstraint(p + d, Val(2)),
+     pointConstraint(p - d, Val(2))]
+end
+
 function prettyprint(x, ::Val{2})
     names = ["x**2", "y**2", "z**2", "y*z", "x*z", "x*y", "x", "y", "z", "1"]
     for i in 1:length(x)
@@ -159,7 +164,7 @@ function fitQuadratic(curve, n0, n1)
     # b1[6:8] = n0
     # b1[9:11] = n1
 
-    m = 4                       # minimization constraints
+    m = 10                       # minimization constraints
     A2 = zeros(m, 10)
     b2 = zeros(m)
     points = []
@@ -169,8 +174,8 @@ function fitQuadratic(curve, n0, n1)
         ts = evalRationalDerivative(curve, s)
         ns = n0 * (1 - s) + n1 * s
         bs = normalize(cross(ts, ns))
-        lc = lineConstraint(ps, bs, 2)
-        append!(points, [ps + bs, ps + 2bs])
+        lc = lineConstraint(ps, bs, Val(2))
+        append!(points, [ps + bs, ps - bs])
         for j in 1:2
             A2[2i-2+j,:] = lc[j]
         end
@@ -196,13 +201,15 @@ function fitQuadratic(curve, n0, n1)
     F = svd(A)
     # println("S: $(F.S)")
     # display(F.V)
-    x = F.V[:,end]
+    i = findfirst(s -> abs(s) < 1e-5, F.S)
+    x = F.V[:,i]
     # x = qr(A, Val(true)) \ b
 
+    x = x[1:10] / norm(x[1:10])
     print("x: ")
-    prettyprint(x[1:10], Val(2))
-    println("Error: $(maximum(map(abs,A1*x[1:10]-b1)))")
-    x[1:10]
+    prettyprint(x, Val(2))
+    println("Error: $(maximum(map(abs,A1*x-b1)))")
+    x
 end
 
 evalQuadratic(qf, p) = sum(pointConstraint(p, Val(2)) .* qf)
@@ -258,9 +265,9 @@ function curveNormalConstraint(curve, n0, n1, ::Val{3})
     end
 end
 
-function lineConstraint(p, d, degree)
-    map(1:degree) do i          # assumes that one other point (p) is already constrained
-        pointConstraint(p + d * i, Val(degree))
+function lineConstraint(p, d, ::Val{3})
+    map(1:3) do i          # assumes that one other point (p) is already constrained
+        pointConstraint(p + d * i, Val(3))
     end
 end
 
@@ -289,11 +296,11 @@ function fitCubic(curve, n0, n1)
     # b0 = normalize(cross(t0, n0))
     # b05 = normalize(cross(t05, normalize(n0 + n1)))
     # b1 = normalize(cross(t1, n1))
-    # append!(rows, lineConstraint(evalRational(curve, 0.5), b05, 3))
-    # append!(rows, lineConstraint(evalRational(curve, 0), b0, 3))
-    # append!(rows, lineConstraint(evalRational(curve, 1), b1, 3))
-    # append!(rows, lineConstraint(evalRational(curve, 0), t0, 3))
-    # append!(rows, lineConstraint(evalRational(curve, 1), t1, 3))
+    # append!(rows, lineConstraint(evalRational(curve, 0.5), b05, Val(3)))
+    # append!(rows, lineConstraint(evalRational(curve, 0), b0, Val(3)))
+    # append!(rows, lineConstraint(evalRational(curve, 1), b1, Val(3)))
+    # append!(rows, lineConstraint(evalRational(curve, 0), t0, Val(3)))
+    # append!(rows, lineConstraint(evalRational(curve, 1), t1, Val(3)))
     A1 = mapreduce(transpose, vcat, rows)
     n = size(A1, 1)
     b1 = zeros(n)
@@ -310,7 +317,7 @@ function fitCubic(curve, n0, n1)
         ts = evalRationalDerivative(curve, s)
         ns = n0 * (1 - s) + n1 * s
         bs = normalize(cross(ts, ns))
-        lc = lineConstraint(ps, bs, 3)
+        lc = lineConstraint(ps, bs, Val(3))
         append!(points, [ps + bs, ps + 2bs, ps + 3bs])
         for j in 1:3
             A2[3i-3+j,:] = lc[j]
