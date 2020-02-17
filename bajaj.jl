@@ -164,16 +164,17 @@ function fitQuadratic(curve, n0, n1)
     # b1[6:8] = n0
     # b1[9:11] = n1
 
-    m = 10                       # minimization constraints
-    A2 = zeros(m, 10)
-    b2 = zeros(m)
+    m = 8                       # minimization constraints
+    A2 = zeros(2m, 10)
+    b2 = zeros(2m)
     points = []
-    for i in 1:m÷2
-        s = (i-1)/(m÷2-1)
+    scaling = norm(evalRational(curve, 0) - evalRational(curve, 1))
+    for i in 1:m
+        s = (i-1)/(m-1)
         ps = evalRational(curve, s)
         ts = evalRationalDerivative(curve, s)
         ns = n0 * (1 - s) + n1 * s
-        bs = normalize(cross(ts, ns))
+        bs = normalize(cross(ts, ns)) * scaling
         lc = lineConstraint(ps, bs, Val(2))
         append!(points, [ps + bs, ps - bs])
         for j in 1:2
@@ -193,6 +194,9 @@ function fitQuadratic(curve, n0, n1)
     A = [(A2' * A2)     A1'
              A1      zeros(n,n)]
     b = vcat(A2' * b2, b1)
+    # open("/tmp/mat2.txt", "w") do f
+    #     println(f, A)
+    # end
 
     # No minimization
     # A = A1
@@ -201,11 +205,13 @@ function fitQuadratic(curve, n0, n1)
     F = svd(A)
     # println("S: $(F.S)")
     # display(F.V)
-    i = findfirst(s -> abs(s) < 1e-5, F.S)
-    x = F.V[:,i]
+    # i = findfirst(s -> abs(s) < 1e-5, F.S)
+    x = F.V[:,end]
     # x = qr(A, Val(true)) \ b
 
     x = x[1:10] / norm(x[1:10])
+
+    println(x)
     print("x: ")
     prettyprint(x, Val(2))
     println("Error: $(maximum(map(abs,A1*x-b1)))")
@@ -354,17 +360,14 @@ end
 evalCubic(cf, p) = sum(pointConstraint(p, Val(3)) .* cf)
 
 function test(degree)
-    origin = [5,-7,3]
-    curve = RationalCurve([origin, origin + [0, 1, 0], origin + [1, 1, 0]], [1, sqrt(2)/2, 1])
-    # n0 = [0.1, 0, 1]
-    # n1 = [0, 0.1, 1]
-    n0 = [-1, 0, -0.4]
-    n1 = [0, 1, 0.4]
+    curve = RationalCurve([[9.74022, 10.8701, 11.5973], [9.74022, 10.8701, 12.2208], [10.3637, 11.1818, 12.3143]], [1,1,1])
+    n0 = [-1,0,0]
+    n1 = [-0.14834,0,0.988936]
     res = 30
     fitter = degree == 2 ? fitQuadratic : fitCubic
     evaluator = degree == 2 ? evalQuadratic : evalCubic
     f = fitter(curve, normalize(n0), normalize(n1))
-    dc = Main.DualContouring.isosurface(0, (origin-[1,1,1], origin+[2,2,2]), (res, res, res)) do p
+    dc = Main.DualContouring.isosurface(0, ([9,10,11], [13,14,15]), (res, res, res)) do p
         evaluator(f, p)
     end
     Main.DualContouring.writeOBJ(dc..., "/tmp/surface.obj")
