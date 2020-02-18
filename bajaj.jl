@@ -164,9 +164,8 @@ function fitQuadratic(curve, n0, n1)
     A1 = mapreduce(transpose, vcat, rows)
     n = size(A1, 1)
     b1 = zeros(n)
-    # b1[6:8] = n0
-    # b1[9:11] = n1
-
+    # b1[end-5:end-3] = n0 * 50
+    # b1[end-2:end] = n1 * 50
 
     m = 8                       # minimization constraints
     rows = []
@@ -178,6 +177,7 @@ function fitQuadratic(curve, n0, n1)
         ts = evalRationalDerivative(curve, s)
         ns = n0 * (1 - s) + n1 * s
         bs = normalize(cross(ts, ns)) * scaling
+        bs = cross((n0 + n1) / 2, evalRational(curve, 0) - evalRational(curve, 1))
         append!(rows, lineConstraint(ps, bs, Val(2)))
         append!(points, [ps + bs, ps - bs])
     end
@@ -197,26 +197,23 @@ function fitQuadratic(curve, n0, n1)
     # append!(rows, normalConstraintExplicit(evalRational(curve, 1), Val(2)))
     A2 = mapreduce(transpose, vcat, rows)
 
-    # Least-square minimization of A2 x = b2, while constraining A1 x = b1
-    # A = [(A2' * A2)     A1'
-    #          A1      zeros(n,n)]
-    # b = vcat(A2' * b2, b1)
-    # open("/tmp/mat2.txt", "w") do f
-    #     println(f, A)
-    # end
-
-    # No minimization
-    # A = A1
-    # b = b1
+    # b2 = zeros(size(A2, 1))
+    # b2[end-5:end-3] = n0
+    # b2[end-2:end] = n1
 
     M = nullspace(A1)
     A = M' * A2' * A2 * M
+    # b = M' * A2' * b2
+
+    # Only interpolation
+    # A = A1
+    # b = b1
 
     F = svd(A)
     println("S: $(F.S)")
-    # display(F.V)
-    # i = findfirst(s -> abs(s) < 1e-5, F.S)
+
     x = M * F.V[:,end]
+    # x = M * (qr(A, Val(true)) \ b)
     # x = qr(A, Val(true)) \ b
 
     x = x[1:10] / norm(x[1:10])
@@ -323,6 +320,7 @@ function fitCubic(curve, n0, n1)
         ts = evalRationalDerivative(curve, s)
         ns = n0 * (1 - s) + n1 * s
         bs = normalize(cross(ts, ns)) * scaling
+        bs = cross((n0 + n1) / 2, evalRational(curve, 0) - evalRational(curve, 1))
         push!(rows, pointConstraint(ps + bs, Val(3)))
         push!(rows, pointConstraint(ps - bs, Val(3)))
         append!(points, [ps + bs, ps - bs])
@@ -385,13 +383,19 @@ end
 function test(filename; degree = 2)
     (p0, p1, p2, w, n0, n1) = readExample(filename)
     curve = RationalCurve([p0, p1, p2], [1, w, 1])
+    bbox = ([-200,-200,100], [100,100,400])
 
+    # origin = [5, 6, 7]
+    # curve = RationalCurve([origin, origin + [0, 1, 0], origin + [1, 1, 0]], [1, sqrt(2)/2, 1])
+    # n0 = [-1, 0, -0.4]
+    # n1 = [0, 1, 0.4]
+    # bbox = (origin-[1.5,1.5,1.5], origin+[2.5,2.5,2.5])
 
     res = 100
     fitter = degree == 2 ? fitQuadratic : fitCubic
     evaluator = degree == 2 ? evalQuadratic : evalCubic
     f = fitter(curve, normalize(n0), normalize(n1))
-    dc = Main.DualContouring.isosurface(0, ([-200,-200,100], [100,100,400]), (res, res, res)) do p
+    dc = Main.DualContouring.isosurface(0, bbox, (res, res, res)) do p
         evaluator(f, p)
     end
     Main.DualContouring.writeOBJ(dc..., "/tmp/surface.obj")
