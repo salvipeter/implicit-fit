@@ -64,6 +64,7 @@ function fitSurface(curves, degree)
     # Solve the system
     F = svd(A)
     x = F.V[:,end]
+    println("Nullspace size: $(size(nullspace(A),2))")
 
     println("Error: $(maximum(map(abs,A*x)))")
     x
