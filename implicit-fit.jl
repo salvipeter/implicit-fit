@@ -155,7 +155,7 @@ end
 function readCurves(filename)
     data = readdlm(filename)
     n = size(data, 1)
-    [RationalCurve([data[i,1:3], data[i,4:6], data[i,7:9]], [1, data[10], 1]) for i in 1:n]
+    [RationalCurve([data[i,1:3], data[i,4:6], data[i,7:9]], [1, data[i,10], 1]) for i in 1:n]
 end
 
 function boundingBox(curves)
