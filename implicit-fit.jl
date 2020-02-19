@@ -79,7 +79,7 @@ function fitSurface(curves, points, point_normals, degree, fence_degree)
         push!(rows, pointConstraint(p, degree))
     end
     for (p, n) in point_normals
-        push!(rows, normalConstraint(p, n, degree))
+        append!(rows, normalConstraint(p, n, degree))
     end
     A = mapreduce(transpose, vcat, rows)
     println("Matrix size: $(size(A))")
