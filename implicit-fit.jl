@@ -49,7 +49,20 @@ function curveNormalConstraint(curve, n0, n1, degree, m)
     end
 end
 
-function fitSurface(curves, degree, fence_degree, center)
+"""
+    fitSurface(curves, points, point_normals, degree, fence_degree)
+
+Fits an implicit surface of degree `degree` on the given entities:
+- `curves` is an array of `RationalCurve`s
+- `points` is an array of 3D points
+- `point_normals` is an array of (point, normal) pairs
+
+When `fence_degree` is not zero, curves also get normal constraints.
+It can take on any positive odd number, which will generate a Hermite blend
+of the corresponding degree between the two normal vectors at the curve
+endpoints (computed by the cross product of the tangent vectors).
+"""
+function fitSurface(curves, points, point_normals, degree, fence_degree)
     n = length(curves)
     rows = []
     for i in 1:n
@@ -62,8 +75,11 @@ function fitSurface(curves, degree, fence_degree, center)
             append!(rows, curveNormalConstraint(curve, n0, n1, degree, fence_degree))
         end
     end
-    if center != nothing
-        push!(rows, pointConstraint(center, degree))
+    for p in points
+        push!(rows, pointConstraint(p, degree))
+    end
+    for (p, n) in point_normals
+        push!(rows, normalConstraint(p, n, degree))
     end
     A = mapreduce(transpose, vcat, rows)
     println("Matrix size: $(size(A))")
@@ -217,7 +233,7 @@ function test(filename, degree; fence_degree = 1, use_center = false)
     bbox = boundingBox(curves)
     res = 100
 
-    coeffs = fitSurface(curves, degree, fence_degree, use_center ? center : nothing)
+    coeffs = fitSurface(curves, use_center ? [center] : [], [], degree, fence_degree)
     dc = Main.DualContouring.isosurface(0, bbox, (res, res, res)) do p
         evalSurface(coeffs, degree, p)
     end
