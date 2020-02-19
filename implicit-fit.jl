@@ -29,13 +29,16 @@ function normalConstraint(p, n, degree)
 end
 
 function curveConstraint(curve, degree)
-    map(range(0, stop=1, length=2*degree+1)) do u
+    d = length(curve.cp) - 1    # curve degree
+    map(range(0, stop=1, length=degree*d+1)) do u
         pointConstraint(evalRational(curve, u), degree)
     end
 end
 
 function curveNormalConstraint(curve, n0, n1, degree)
-    map(range(0, stop=1, length=2*degree)) do u
+    d = length(curve.cp) - 1    # curve degree
+    m = 1                       # normal fence degree
+    map(range(0, stop=1, length=(degree-1)*d+m+1)) do u
         n = n0 * (1 - u) + n1 * u
         t = evalRationalDerivative(curve, u)
         derivatives = gradientConstraint(evalRational(curve, u), degree)
@@ -46,7 +49,7 @@ function curveNormalConstraint(curve, n0, n1, degree)
     end
 end
 
-function fitSurface(curves, degree)
+function fitSurface(curves, degree, fit_fence, center)
     n = length(curves)
     rows = []
     for i in 1:n
@@ -55,8 +58,15 @@ function fitSurface(curves, degree)
         n0 = cross(evalRationalDerivative(curve, 0), evalRationalDerivative(prev, 1))
         n1 = cross(evalRationalDerivative(curve, 1), evalRationalDerivative(next, 0))
         append!(rows, curveConstraint(curve, degree))
-        append!(rows, normalConstraint(evalRational(curve, 0), n0, degree))
-        append!(rows, normalConstraint(evalRational(curve, 1), n1, degree))
+        if fit_fence
+            append!(rows, curveNormalConstraint(curve, n0, n1, degree))
+        else
+            append!(rows, normalConstraint(evalRational(curve, 0), n0, degree))
+            append!(rows, normalConstraint(evalRational(curve, 1), n1, degree))
+        end
+    end
+    if center != nothing
+        push!(rows, pointConstraint(center, degree))
     end
     A = mapreduce(transpose, vcat, rows)
     println("Matrix size: $(size(A))")
@@ -152,10 +162,39 @@ function writeCurves(curves, resolution, filename)
     end
 end
 
-function readCurves(filename)
+function readCurvesFromCrv(filename)
     data = readdlm(filename)
     n = size(data, 1)
-    [RationalCurve([data[i,1:3], data[i,4:6], data[i,7:9]], [1, data[i,10], 1]) for i in 1:n]
+    ([RationalCurve([data[i,1:3], data[i,4:6], data[i,7:9]], [1, data[i,10], 1]) for i in 1:n],
+     nothing)
+end
+
+function readCurvesFromGbp(filename)
+    read_numbers(f, numtype) = map(s -> parse(numtype, s), split(readline(f)))
+    result = []
+    local central_cp
+    open(filename) do f
+        n, d = read_numbers(f, Int)
+        central_cp = read_numbers(f, Float64)
+        cpts = []
+        for i in 1:n*d
+            p = read_numbers(f, Float64)
+            push!(cpts, p)
+            if i != 1 && (i - 1) % d == 0
+                push!(result, RationalCurve(cpts, ones(d + 1)))
+                cpts = [cpts[end]]
+            end
+        end
+        push!(cpts, result[1].cp[1])
+        push!(result, RationalCurve(cpts, ones(d + 1)))
+    end
+    (result, central_cp)
+end
+
+function readCurves(filename)
+    match(r"\.crv$", filename) != nothing && return readCurvesFromCrv(filename)
+    match(r"\.gbp$", filename) != nothing && return readCurvesFromGbp(filename)
+    @error "Unknown file extension"
 end
 
 function boundingBox(curves)
@@ -176,12 +215,12 @@ end
 
 # Main program
 
-function test(filename, degree)
-    curves = readCurves(filename)
+function test(filename, degree; fit_fence = true, use_center = false)
+    (curves, center) = readCurves(filename)
     bbox = boundingBox(curves)
     res = 100
 
-    coeffs = fitSurface(curves, degree)
+    coeffs = fitSurface(curves, degree, fit_fence, use_center ? center : nothing)
     dc = Main.DualContouring.isosurface(0, bbox, (res, res, res)) do p
         evalSurface(coeffs, degree, p)
     end
