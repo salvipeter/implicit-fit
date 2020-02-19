@@ -35,11 +35,11 @@ function curveConstraint(curve, degree)
     end
 end
 
-function curveNormalConstraint(curve, n0, n1, degree)
+function curveNormalConstraint(curve, n0, n1, degree, m)
     d = length(curve.cp) - 1    # curve degree
-    m = 1                       # normal fence degree
     map(range(0, stop=1, length=(degree-1)*d+m+1)) do u
-        n = n0 * (1 - u) + n1 * u
+        coeffs = bernstein(m, u)
+        n = n0 * sum(coeffs[1:m÷2+1]) + n1 * sum(coeffs[m÷2+2:m+1])
         t = evalRationalDerivative(curve, u)
         derivatives = gradientConstraint(evalRational(curve, u), degree)
         i = findmax(map(abs, t))[2] # index of max. absolute value in t
@@ -49,7 +49,7 @@ function curveNormalConstraint(curve, n0, n1, degree)
     end
 end
 
-function fitSurface(curves, degree, fit_fence, center)
+function fitSurface(curves, degree, fence_degree, center)
     n = length(curves)
     rows = []
     for i in 1:n
@@ -58,11 +58,8 @@ function fitSurface(curves, degree, fit_fence, center)
         n0 = cross(evalRationalDerivative(curve, 0), evalRationalDerivative(prev, 1))
         n1 = cross(evalRationalDerivative(curve, 1), evalRationalDerivative(next, 0))
         append!(rows, curveConstraint(curve, degree))
-        if fit_fence
-            append!(rows, curveNormalConstraint(curve, n0, n1, degree))
-        else
-            append!(rows, normalConstraint(evalRational(curve, 0), n0, degree))
-            append!(rows, normalConstraint(evalRational(curve, 1), n1, degree))
+        if fence_degree > 0
+            append!(rows, curveNormalConstraint(curve, n0, n1, degree, fence_degree))
         end
     end
     if center != nothing
@@ -215,12 +212,12 @@ end
 
 # Main program
 
-function test(filename, degree; fit_fence = true, use_center = false)
+function test(filename, degree; fence_degree = 1, use_center = false)
     (curves, center) = readCurves(filename)
     bbox = boundingBox(curves)
     res = 100
 
-    coeffs = fitSurface(curves, degree, fit_fence, use_center ? center : nothing)
+    coeffs = fitSurface(curves, degree, fence_degree, use_center ? center : nothing)
     dc = Main.DualContouring.isosurface(0, bbox, (res, res, res)) do p
         evalSurface(coeffs, degree, p)
     end
