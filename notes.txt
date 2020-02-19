@@ -1,0 +1,10 @@
+Additional LSQ energy can be added in the following way:
+
+- assume   A1 x = 0   contains the original constraints
+- assume   A2 x = 0   contains the LSQ minimization
+
+=> solve    A x = 0   where   A = M' * A2' * A2 * M   and M = nullspace(A1)
+
+When the LSQ minimization has a RHS vector:   A2 x = b2
+
+=> solve    A y = b   where   b = M' * A2' * b2    and x = M * y
