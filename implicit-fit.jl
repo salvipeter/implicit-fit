@@ -41,6 +41,7 @@ function curveNormalConstraint(curve, n0, n1, degree, m)
         coeffs = bernstein(m, u)
         n = n0 * sum(coeffs[1:m÷2+1]) + n1 * sum(coeffs[m÷2+2:m+1])
         t = evalRationalDerivative(curve, u)
+        n = normalize(cross(cross(t, n), t))
         derivatives = gradientConstraint(evalRational(curve, u), degree)
         i = findmax(map(abs, t))[2] # index of max. absolute value in t
         j = mod1(i + 1, 3)
