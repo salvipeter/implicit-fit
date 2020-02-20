@@ -87,6 +87,7 @@ function fitSurface(curves, points, point_normals, degree, fence_degree)
     # Solve the system
     F = svd(A)
     x = F.V[:,end]
+    println("Matrix condition: $(cond(A))")
     println("Nullspace size: $(size(nullspace(A),2))")
 
     println("Error: $(maximum(map(abs,A*x)))")
@@ -204,9 +205,17 @@ function readCurvesFromGbp(filename)
     (result, central_cp)
 end
 
+function readCurvesFromSbv(filename)
+    data = readdlm(filename)
+    n = size(data, 1) - 1
+    (generateSetback(data[1,1:3], [data[i+1,1:3] for i in 1:n], [data[i+1,4] for i in 1:n]),
+     nothing)
+end
+
 function readCurves(filename)
     match(r"\.crv$", filename) != nothing && return readCurvesFromCrv(filename)
     match(r"\.gbp$", filename) != nothing && return readCurvesFromGbp(filename)
+    match(r"\.sbv$", filename) != nothing && return readCurvesFromSbv(filename)
     @error "Unknown file extension"
 end
 
@@ -225,6 +234,66 @@ function boundingBox(curves)
     (m - d * scale, m + d * scale)
 end
 
+function intersectLines(ap, ad, bp, bd)
+    ϵ = 1.0e-8
+    a = dot(ad, ad)
+    b = dot(ad, bd)
+    c = dot(bd, bd)
+    d = dot(ad, ap - bp)
+    e = dot(bd, ap - bp)
+    a * c - b * b < ϵ && return ap
+    s = (b * e - c * d) / (a * c - b * b)
+    ap + s * ad;
+end
+
+"""
+    generateSetback(center, setbacks, ranges)
+
+Given a center point and an array of setback points,
+generate a list of curves defining a setback vertex blend.
+The radii of the blends are defined by the given ranges.
+
+The profile curves are circular arcs,
+while the spring curves are parabolic arcs.
+"""
+function generateSetback(center, setbacks, ranges)
+    n = length(setbacks)
+
+    # Generate spring curves
+    springs = map(1:n) do i
+        ip = mod1(i + 1, n)
+        p1, p2 = setbacks[i], setbacks[ip]
+        r1, r2 = ranges[i], ranges[ip]
+
+        # Compute directions
+        normal = normalize(cross(p1 - center, p2 - center))
+        d1 = normalize(cross(normal, center - p1))
+        d2 = normalize(cross(normal, center - p2))
+
+        # Fix orientation
+        if dot(p2 - center, d1) < 0
+            d1 *= -1
+        end
+        if dot(p1 - center, d2) < 0
+            d2 *= -1
+        end
+
+        q1, q2 = p1 + d1 * r1, p2 + d2 * r2
+        q12 = intersectLines(q1, center - p1, q2, center - p2)
+        RationalCurve([q1, q12, q2], [1, 1, 1])
+    end
+
+    result = []
+    for i in 1:n
+        im = mod1(i - 1, n)
+        push!(result, RationalCurve([springs[im].cp[3], setbacks[i], springs[i].cp[1]],
+                                    [1, sqrt(2) / 2, 1])) # profile curve
+        push!(result, springs[i])
+    end
+
+    result
+end
+
 
 # Main program
 
@@ -233,6 +302,9 @@ function test(filename, degree; fence_degree = 1, use_center = false)
     bbox = boundingBox(curves)
     res = 100
 
+    if center === nothing
+        use_center = false
+    end
     coeffs = fitSurface(curves, use_center ? [center] : [], [], degree, fence_degree)
     dc = Main.DualContouring.isosurface(0, bbox, (res, res, res)) do p
         evalSurface(coeffs, degree, p)
